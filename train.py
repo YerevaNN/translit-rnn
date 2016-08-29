@@ -162,52 +162,39 @@ def gen_data(p, SEQ_LENGTH, batch_size = 100, data=in_text):
             y[i,ind,char_to_index[u'\u2001']] = 1
     return (x,y,p,turned)
 
-def define_model(N_HIDDEN , LEARNING_RATE,  GRAD_CLIP):
+def define_model(N_HIDDEN, depth, LEARNING_RATE,  GRAD_CLIP):
     
-    l_in = lasagne.layers.InputLayer(shape=(None, None, trans_vocab_size))
-
-    symbolic_batch_size = lasagne.layers.get_output(l_in).shape[0]
+    l_input = lasagne.layers.InputLayer(shape=(None, None, trans_vocab_size))
+    network = l_input
+    symbolic_batch_size = lasagne.layers.get_output(network).shape[0]
     
-    l_forward_1 = lasagne.layers.GRULayer(
-        l_in, N_HIDDEN, grad_clipping=GRAD_CLIP,
-        backwards=False)
+    while depth > 0 :
+        
+        l_forward = lasagne.layers.LSTMLayer(
+            network, N_HIDDEN, grad_clipping=GRAD_CLIP,
+            backwards=False)
+        
+        l_backward = lasagne.layers.LSTMLayer(
+            network, N_HIDDEN, grad_clipping=GRAD_CLIP,
+            backwards=True)
+        
+        l_reshape_forward = lasagne.layers.ReshapeLayer(l_forward, (-1, N_HIDDEN))
     
-    l_backward_1 = lasagne.layers.GRULayer(
-        l_in, N_HIDDEN, grad_clipping=GRAD_CLIP,
-        backwards=True)
+        l_forward_dense = lasagne.layers.DenseLayer(l_reshape_forward, num_units=N_HIDDEN, W = lasagne.init.Normal(), nonlinearity=None)
+        
+        l_reshape_backward = lasagne.layers.ReshapeLayer(l_backward, (-1, N_HIDDEN))
+        
+        l_backward_dense = lasagne.layers.DenseLayer(l_reshape_backward, num_units=N_HIDDEN, W = lasagne.init.Normal(), nonlinearity=None)
+        
+        network = lasagne.layers.ElemwiseSumLayer(incomings=[l_forward_dense,l_backward_dense])
+        
+        network = lasagne.layers.ReshapeLayer(network, (symbolic_batch_size, -1, N_HIDDEN))
+        
+        depth -= 1
     
-    l_reshape_forward_1 = lasagne.layers.ReshapeLayer(l_forward_1, (-1, N_HIDDEN))
-
-    l_forward_1_dense = lasagne.layers.DenseLayer(l_reshape_forward_1, num_units=N_HIDDEN, W = lasagne.init.Normal(), nonlinearity=None)
+    network = lasagne.layers.ReshapeLayer(network, (-1, N_HIDDEN) )
     
-    l_reshape_backward_1 = lasagne.layers.ReshapeLayer(l_backward_1, (-1, N_HIDDEN))
-    
-    l_backward_1_dense = lasagne.layers.DenseLayer(l_reshape_backward_1, num_units=N_HIDDEN, W = lasagne.init.Normal(), nonlinearity=None)
-    
-    sum_layer_1 = lasagne.layers.ElemwiseSumLayer(incomings=[l_forward_1_dense,l_backward_1_dense])
-    
-    l_reshape_sum_1 = lasagne.layers.ReshapeLayer(sum_layer_1, (symbolic_batch_size, -1, N_HIDDEN))
-    
-    
-    l_forward_2 = lasagne.layers.GRULayer(
-        l_reshape_sum_1, N_HIDDEN, grad_clipping=GRAD_CLIP,
-        backwards=False)
-    
-    l_backward_2 = lasagne.layers.GRULayer(
-        l_reshape_sum_1, N_HIDDEN, grad_clipping=GRAD_CLIP,
-        backwards=True)
-    
-    l_reshape_forward_2 = lasagne.layers.ReshapeLayer(l_forward_2, (-1, N_HIDDEN))
-
-    l_forward_2_dense = lasagne.layers.DenseLayer(l_reshape_forward_2, num_units=N_HIDDEN, W = lasagne.init.Normal(), nonlinearity=None)
-    
-    l_reshape_backward_2 = lasagne.layers.ReshapeLayer(l_backward_2, (-1, N_HIDDEN))
-    
-    l_backward_2_dense = lasagne.layers.DenseLayer(l_reshape_backward_2, num_units=N_HIDDEN, W = lasagne.init.Normal(), nonlinearity=None)
-    
-    sum_layer_2 = lasagne.layers.ElemwiseSumLayer(incomings=[l_forward_2_dense,l_backward_2_dense])
-    
-    l_out = lasagne.layers.DenseLayer(sum_layer_2, num_units=vocab_size, W = lasagne.init.Normal(), nonlinearity=lasagne.nonlinearities.softmax)
+    l_out = lasagne.layers.DenseLayer(network, num_units=vocab_size, W = lasagne.init.Normal(), nonlinearity=lasagne.nonlinearities.softmax)
 
     target_values = T.dmatrix('target_output')
     
@@ -221,7 +208,7 @@ def define_model(N_HIDDEN , LEARNING_RATE,  GRAD_CLIP):
     updates = lasagne.updates.adagrad(cost, all_params, LEARNING_RATE)
 
     print("Compiling functions ...")
-    train = theano.function([l_in.input_var, target_values], cost, updates=updates, allow_input_downcast=True)
+    train = theano.function([l_input.input_var, target_values], cost, updates=updates, allow_input_downcast=True)
     
     return(l_out,train)
 
@@ -234,12 +221,13 @@ def main():
     parser.add_argument('--batch_size', default=50, type=int)
     parser.add_argument('--num_epochs', default=10, type=int)
     parser.add_argument('--seq_len', default=60, type=int)
+    parser.add_argument('--depth', default=1, type=int)
     parser.add_argument('--model', default=None)
     args = parser.parse_args()
    
     print("Building network ...")
    
-    (output_layer, train) = define_model(args.hdim, args.lr, args.grad_clip)
+    (output_layer, train) = define_model(args.hdim, args.depth, args.lr, args.grad_clip)
     
     if args.model:
         f = np.load(args.model)
@@ -266,7 +254,7 @@ def main():
         
         step_cnt += 1
         if step_cnt * args.batch_size > 50000:
-            file_name = 'models/only_bidirectional_GRU.' + str(args.hdim) + '.' + str(1.0 * it + 1.0 * p / data_size) + '.epoch.' + str(avg_cost / PRINT_FREQ)  + '.loss.' + str(args.seq_len) + '.seq_len.' + str(args.batch_size) + '.bs'  + '.npz'
+            file_name = 'models/two_bidirectional_LSTMs.' + str(args.hdim) + '.' + str(1.0 * it + 1.0 * p / data_size) + '.epoch.' + str(avg_cost / PRINT_FREQ)  + '.loss.' + str(args.seq_len) + '.seq_len.' + str(args.batch_size) + '.bs'  + '.npz'
             print("saving to -> " + file_name)
             np.save(file_name, lasagne.layers.get_all_param_values(output_layer))
             step_cnt = 0
