@@ -39,6 +39,17 @@ def  toTranslit(prevc,c,nextc,trans):
             return i
     print (c,s,"error")
 
+def valid(s):
+    valids = ['@',';',':','-',',',' ','\n','\t','&'] + [chr( ord('a') + i) for i in range(26)] + [chr( ord('A') + i) for i in range(26)]
+    ans = []
+    
+    for c in s:
+        if c in valids:
+            ans.append(c)
+        else:
+            ans.append('#')
+    return ans
+    
 in_text = codecs.open('data/hard_wiki_train',encoding='utf-8').read().replace(u'ու',u'\u3233').replace(u'Ու',u'\u3234').replace(u'ՈՒ',u'\u3235')
 
 #in_text = urllib2.urlopen('https://s3.amazonaws.com/text-datasets/nietzsche.txt').read()
@@ -56,16 +67,45 @@ in_text = ' \t' + u'\u2001' + u'\u2000' + in_text
 data_size = len(in_text)
 
 def make_vocabulary_files(data, file_name_prefix):
-    
-    chars = list(set(data))
+    pointer = 0
+    done = False
+    s_l = 100000
+    chars = set()
+    trans_chars = set()
+    while not done:
+        new_p = min(pointer + s_l ,len(data))
+        raw_armenian = data[pointer : new_p]
+        if new_p != len(data):
+            pointer = new_p
+            raw_armenian = ' ' + raw_armenian + ' '
+        else:
+            raw_armenian = ' ' + raw_armenian + ' '
+            done = True
+        armenian = []
+        translit = []
+        for ind in range(1,len(raw_armenian)-1):
+            trans_char = toTranslit(raw_armenian[ind-1], raw_armenian[ind], raw_armenian[ind+1], trans)
+            translit.append(trans_char[0])
+            if len(trans_char) > 1:
+                armenian.append(u'\u2000')
+                translit.append(trans_char[1])
+            armenian.append(raw_armenian[ind])
+        translit = valid(translit)
+        for i in range(len(armenian)):
+            if translit[i] == '#':
+                armenian[i] = '#'
+        chars = chars.union(set(armenian))
+        trans_chars = trans_chars.union(set(translit))
+        print(str(100.0*pointer/len(data)) + "% done       ", end='\r')
+        
+    chars = list(chars)
     char_to_index = { chars[i] : i for i in range(len(chars)) }
     index_to_char = { i : chars[i] for i in range(len(chars)) }
     
     open(file_name_prefix + '.char_to_index.json','w').write(json.dumps(char_to_index))
     open(file_name_prefix + '.index_to_char.json','w').write(json.dumps(index_to_char))
     
-    translit = [toTranslit(in_text[i],in_text[i+1],in_text[i+2],trans) for i in range(len(in_text) - 3)]
-    trans_chars = list(set(''.join(translit)))
+    trans_chars = list(trans_chars)
     trans_to_index = { trans_chars[i] : i for i in range(len(trans_chars)) }
     index_to_trans = { i : trans_chars[i] for i in range(len(trans_chars)) }
     trans_vocab_size = len(trans_chars)
@@ -91,17 +131,13 @@ def load_vocabulary(file_name_prefix):
     return (char_to_index, index_to_char, vocab_size, trans_to_index, index_to_trans, trans_vocab_size)
 
 #print("Making Vocabulary Files")
-#make_vocabulary_files(in_text,'aligned_gru')
+#make_vocabulary_files(in_text,'small')
+
 print("Loading Vocabulary Files")
-(char_to_index, index_to_char, vocab_size, trans_to_index, index_to_trans, trans_vocab_size) = load_vocabulary('aligned_gru')
+(char_to_index, index_to_char, vocab_size, trans_to_index, index_to_trans, trans_vocab_size) = load_vocabulary('small')
 
 #Lasagne Seed for Reproducibility
 lasagne.random.set_rng(np.random.RandomState(1))
-
-
-# Number of units in the two hidden (LSTM) layers
-N_HIDDEN = 1024
-
 
 
 # How often should we check the output?
@@ -127,24 +163,34 @@ def one_hot_matrix_to_sentence(data, translit = False):
     return sentence
 
 def gen_data(p, SEQ_LENGTH, batch_size = 100, data=in_text):
+    
     x = np.zeros((batch_size,int(1.3*SEQ_LENGTH),trans_vocab_size))
     y = np.zeros((batch_size,int(1.3*SEQ_LENGTH),vocab_size))
+    non_armenian_sequences = 0
+    
     turned = False
     for i in range(batch_size):
-        new_p = min(p+SEQ_LENGTH,len(data))
-        raw_armenian = data[p:new_p]
-        if new_p != len(data):
-            if max([raw_armenian.rfind(u' '),raw_armenian.rfind(u'\t'),raw_armenian.rfind(u'\n')]) > 0:
-                new_p = max([raw_armenian.rfind(u' '),raw_armenian.rfind(u'\t'),raw_armenian.rfind(u'\n')]) 
-                raw_armenian = ' ' + raw_armenian[:new_p] + ' '
-                p += new_p
+        while True:
+            new_p = min(p+SEQ_LENGTH,len(data))
+            raw_armenian = data[p:new_p]
+            if new_p != len(data):
+                if max([raw_armenian.rfind(u' '),raw_armenian.rfind(u'\t'),raw_armenian.rfind(u'\n')]) > 0:
+                    new_p = max([raw_armenian.rfind(u' '),raw_armenian.rfind(u'\t'),raw_armenian.rfind(u'\n')]) 
+                    raw_armenian = ' ' + raw_armenian[:new_p] + ' '
+                    p += new_p
+                else:
+                    p = new_p
+                    raw_armenian = ' ' + raw_armenian + ' '
             else:
-                p = new_p
                 raw_armenian = ' ' + raw_armenian + ' '
-        else:
-            raw_armenian = ' ' + raw_armenian + ' '
-            p = 0
-            turned = True
+                p = 0
+                turned = True
+            armenian_letter_count = sum([1 for c in raw_armenian if isArmenianLetter(c)])
+            if armenian_letter_count * 3 > len(raw_armenian):
+                break
+            else:
+                non_armenian_sequences += 1
+
         armenian = []
         translit = []
         for ind in range(1,len(raw_armenian)-1):
@@ -154,14 +200,21 @@ def gen_data(p, SEQ_LENGTH, batch_size = 100, data=in_text):
                 armenian.append(u'\u2000')
                 translit.append(trans_char[1])
             armenian.append(raw_armenian[ind])
+            
+        translit = valid(translit)
+        for ind in range(len(armenian)):
+            if translit[ind] == '#':
+                armenian[ind] = '#' 
+        
         for ind in range(len(armenian)):
             y[i,ind,char_to_index[armenian[ind]]] = 1
             x[i,ind,trans_to_index[translit[ind]]] = 1
         for ind in range(len(armenian),int(1.3*SEQ_LENGTH)):
             x[i,ind,trans_to_index[u'\u2001']] = 1
             y[i,ind,char_to_index[u'\u2001']] = 1
-    return (x,y,p,turned)
-
+    return (x,y,p,turned,non_armenian_sequences)
+def get_residual_weight_matrix(network):
+    return network.get_params().shape
 def define_model(N_HIDDEN, depth, LEARNING_RATE,  GRAD_CLIP):
     
     l_input = lasagne.layers.InputLayer(shape=(None, None, trans_vocab_size))
@@ -178,21 +231,16 @@ def define_model(N_HIDDEN, depth, LEARNING_RATE,  GRAD_CLIP):
             network, N_HIDDEN, grad_clipping=GRAD_CLIP,
             backwards=True)
         
-        l_reshape_forward = lasagne.layers.ReshapeLayer(l_forward, (-1, N_HIDDEN))
-    
-        l_forward_dense = lasagne.layers.DenseLayer(l_reshape_forward, num_units=N_HIDDEN, W = lasagne.init.Normal(), nonlinearity=None)
-        
-        l_reshape_backward = lasagne.layers.ReshapeLayer(l_backward, (-1, N_HIDDEN))
-        
-        l_backward_dense = lasagne.layers.DenseLayer(l_reshape_backward, num_units=N_HIDDEN, W = lasagne.init.Normal(), nonlinearity=None)
-        
-        network = lasagne.layers.ElemwiseSumLayer(incomings=[l_forward_dense,l_backward_dense])
-        
+        network = lasagne.layers.ConcatLayer(incomings=[l_forward,l_backward], axis = 2)
+        network = lasagne.layers.ReshapeLayer(network, (-1, 2*N_HIDDEN))
+        network = lasagne.layers.DenseLayer(network, num_units=N_HIDDEN, W = lasagne.init.Normal(), nonlinearity=lasagne.nonlinearities.tanh)
         network = lasagne.layers.ReshapeLayer(network, (symbolic_batch_size, -1, N_HIDDEN))
         
         depth -= 1
     
     network = lasagne.layers.ReshapeLayer(network, (-1, N_HIDDEN) )
+    l_input_reshape = lasagne.layers.ReshapeLayer(l_input, (-1, trans_vocab_size))
+    network = lasagne.layers.ConcatLayer(incomings=[network,l_input_reshape], axis = 1)
     
     l_out = lasagne.layers.DenseLayer(network, num_units=vocab_size, W = lasagne.init.Normal(), nonlinearity=lasagne.nonlinearities.softmax)
 
@@ -216,13 +264,14 @@ def main():
     
     parser = argparse.ArgumentParser()
     parser.add_argument('--hdim', default=512, type=int)
-    parser.add_argument('--grad_clip', default=100, type=int)
-    parser.add_argument('--lr', default=0.001, type=float)
+    parser.add_argument('--grad_clip', default=None, type=int)
+    parser.add_argument('--lr', default=0.01, type=float)
     parser.add_argument('--batch_size', default=50, type=int)
     parser.add_argument('--num_epochs', default=10, type=int)
     parser.add_argument('--seq_len', default=60, type=int)
     parser.add_argument('--depth', default=1, type=int)
     parser.add_argument('--model', default=None)
+    parser.add_argument('--start_from', default=0, type=float)
     args = parser.parse_args()
    
     print("Building network ...")
@@ -233,10 +282,10 @@ def main():
         f = np.load(args.model)
         param_values = [np.float32(f[i]) for i in range(len(f))]
         lasagne.layers.set_all_param_values(output_layer, param_values)
-        
+    print(get_residual_weight_matrix(output_layer))    
     
     print("Training ...")
-    p = 1
+    p = int(len(in_text) * args.start_from) + 1
     step_cnt = 0
     avg_cost = 0
     it = 0
@@ -245,16 +294,16 @@ def main():
         date_at_beginning = datetime.now()
 
         for _ in range(PRINT_FREQ):
-            x,y,p,turned = gen_data(p,args.seq_len, args.batch_size)
+            x,y,p,turned, non_armenian_sequences = gen_data(p,args.seq_len, args.batch_size)
             if turned:
                 it += 1
             avg_cost += train(x, np.reshape(y,(-1,vocab_size)))
         date_after = datetime.now()
-        print("Epoch {} average loss = {} Time {} sec.".format(1.0 * it + 1.0 * p / data_size , avg_cost / PRINT_FREQ, (date_after - date_at_beginning).total_seconds()))
+        print("Epoch {} average loss = {} Time {} sec. NonArmenians skipped {}".format(1.0 * it + 1.0 * p / data_size , avg_cost / PRINT_FREQ, (date_after - date_at_beginning).total_seconds(), non_armenian_sequences))
         
         step_cnt += 1
         if step_cnt * args.batch_size > 50000:
-            file_name = 'models/two_bidirectional_LSTMs.' + str(args.hdim) + '.' + str(1.0 * it + 1.0 * p / data_size) + '.epoch.' + str(avg_cost / PRINT_FREQ)  + '.loss.' + str(args.seq_len) + '.seq_len.' + str(args.batch_size) + '.bs'  + '.npz'
+            file_name = 'models/two_bidirectional_LSTMs.' + str(args.hdim) + '.hdim.' + str(args.depth) + '.depth.' + str(1.0 * it + 1.0 * p / data_size) + '.epoch.' + str(avg_cost / PRINT_FREQ)  + '.loss.' + str(args.seq_len) + '.seq_len.' + str(args.batch_size) + '.bs'  + '.npz'
             print("saving to -> " + file_name)
             np.save(file_name, lasagne.layers.get_all_param_values(output_layer))
             step_cnt = 0

@@ -28,7 +28,7 @@ def is_float(s):
         return False
 
 log = codecs.open(args.log).readlines()
-losses = [float(line.split()[-4]) for line in log if len(line.split()) >= 4 and is_float(line.split()[-4]) ]
+losses = [float(line.split()[-7]) for line in log if len(line.split()) >= 7 and is_float(line.split()[-7]) ]
 losses = smoothen(losses, args.window)
 X = [float(line.split()[1]) for line in log if len(line.split()) >= 2 and is_float(line.split()[1]) ][-len(losses):]
 

@@ -44,11 +44,17 @@ def  toTranslit(prevc,c,nextc,trans):
 #Lasagne Seed for Reproducibility
 lasagne.random.set_rng(np.random.RandomState(1))
 
-# How often should we check the output?
-PRINT_FREQ = 1000
-
-# Number of epochs to train the net
-NUM_EPOCHS = 50
+def valid(s):
+    valids = ['@',';',':','-',',',' ','\n','\t','&'] + [chr( ord('a') + i) for i in range(26)] + [chr( ord('A') + i) for i in range(26)]
+    ans = []
+    non_valids = []
+    for c in s:
+        if c in valids:
+            ans.append(c)
+        else:
+            ans.append('#')
+            non_valids.append(c)
+    return (ans,non_valids)
 
 def load_vocabulary(file_name_prefix):
     char_to_index = json.loads(open(file_name_prefix + '.char_to_index.json').read())
@@ -69,7 +75,7 @@ def load_vocabulary(file_name_prefix):
 
 
 
-(char_to_index, index_to_char, vocab_size, trans_to_index, index_to_trans, trans_vocab_size) = load_vocabulary('aligned_gru')
+(char_to_index, index_to_char, vocab_size, trans_to_index, index_to_trans, trans_vocab_size) = load_vocabulary('small')
 
 
 def one_hot_matrix_to_sentence(data, translit = False):
@@ -83,10 +89,32 @@ def one_hot_matrix_to_sentence(data, translit = False):
             sentence += index_to_char[np.argmax(i)]
     return sentence
 
-
-def gen_data(p, batch_size, data, SEQ_LENGTH = 20):
+def gen_validation_data(p,data,seq_len):
     
+    x = np.zeros((1,int(1.3*seq_len),trans_vocab_size))
+    turned = False
+    new_p = min(p+seq_len,len(data))
+    raw_translit = data[p:new_p]
     
+    if new_p != len(data):
+        if max([raw_translit.rfind(u' '),raw_translit.rfind(u'\t'),raw_translit.rfind(u'\n')]) > 0:
+            new_p = max([raw_translit.rfind(u' '),raw_translit.rfind(u'\t'),raw_translit.rfind(u'\n')])
+            raw_translit = raw_translit[:new_p]
+            p += new_p
+        else:
+            p = new_p
+    else:
+        p = 0
+        turned = True
+    (translit,non_valids) = valid([trans for trans in raw_translit])
+    for ind in range(len(translit)):
+        x[0,ind,trans_to_index[translit[ind]]] = 1
+    for ind in range(len(translit),int(1.3*seq_len)):
+        x[0,ind,trans_to_index[u'\u2001']] = 1
+    
+    return (x,non_valids,p,turned)    
+    
+def gen_data(p, batch_size, data, SEQ_LENGTH):
     x = np.zeros((batch_size,int(1.3*SEQ_LENGTH),trans_vocab_size))
     y = np.zeros((batch_size,int(1.3*SEQ_LENGTH),vocab_size))
     turned = False
@@ -114,6 +142,12 @@ def gen_data(p, batch_size, data, SEQ_LENGTH = 20):
                 armenian.append(u'\u2000')
                 translit.append(trans_char[1])
             armenian.append(raw_armenian[ind])
+        
+        (translit,non_valids) = valid(translit)
+        for ind in range(len(armenian)):
+            if translit[ind] == '#':
+                armenian[ind] = '#' 
+        
         for ind in range(len(armenian)):
             x[i,ind,trans_to_index[translit[ind]]] = 1
             y[i,ind,char_to_index[armenian[ind]]] = 1
@@ -121,8 +155,13 @@ def gen_data(p, batch_size, data, SEQ_LENGTH = 20):
             x[i,ind,trans_to_index[u'\u2001']] = 1
             y[i,ind,char_to_index[u'\u2001']] = 1
             
-    return (x,y,p,turned)
-
+    return (x,y,non_valids,p,turned)
+def get_residual_weight_matrix(network,csv_name):
+    W = network.get_params()[0].get_value()[-63:,:]
+    fr = ['" "'] + ['"' + index_to_char[i] + '"' for i in range(len(index_to_char))]
+    rows = [[index_to_trans[i]] + [x for x in W[i] ] for i in range(len(index_to_trans))]
+    print(rows)
+    codecs.open(csv_name,'w',encoding='utf-8').write(','.join(fr) + '\n' + '\n'.join(['"' + row[0] + '",' + ','.join([ "%.3f" %(r) for r in row[1:] ]) for row in rows]))
 def define_model(N_HIDDEN, depth):
     
     l_input = lasagne.layers.InputLayer(shape=(None, None, trans_vocab_size))
@@ -131,29 +170,24 @@ def define_model(N_HIDDEN, depth):
     
     while depth > 0 :
         
-        l_forward = lasagne.layers.GRULayer(
-            network, N_HIDDEN,
+        l_forward = lasagne.layers.LSTMLayer(
+            network, N_HIDDEN, 
             backwards=False)
         
-        l_backward = lasagne.layers.GRULayer(
+        l_backward = lasagne.layers.LSTMLayer(
             network, N_HIDDEN,
             backwards=True)
         
-        l_reshape_forward = lasagne.layers.ReshapeLayer(l_forward, (-1, N_HIDDEN))
-    
-        l_forward_dense = lasagne.layers.DenseLayer(l_reshape_forward, num_units=N_HIDDEN, W = lasagne.init.Normal(), nonlinearity=None)
-        
-        l_reshape_backward = lasagne.layers.ReshapeLayer(l_backward, (-1, N_HIDDEN))
-        
-        l_backward_dense = lasagne.layers.DenseLayer(l_reshape_backward, num_units=N_HIDDEN, W = lasagne.init.Normal(), nonlinearity=None)
-        
-        network = lasagne.layers.ElemwiseSumLayer(incomings=[l_forward_dense,l_backward_dense])
-        
+        network = lasagne.layers.ConcatLayer(incomings=[l_forward,l_backward], axis = 2)
+        network = lasagne.layers.ReshapeLayer(network, (-1, 2*N_HIDDEN))
+        network = lasagne.layers.DenseLayer(network, num_units=N_HIDDEN, W = lasagne.init.Normal(), nonlinearity=lasagne.nonlinearities.tanh)
         network = lasagne.layers.ReshapeLayer(network, (symbolic_batch_size, -1, N_HIDDEN))
         
         depth -= 1
     
     network = lasagne.layers.ReshapeLayer(network, (-1, N_HIDDEN) )
+    l_input_reshape = lasagne.layers.ReshapeLayer(l_input, (-1, trans_vocab_size))
+    network = lasagne.layers.ConcatLayer(incomings=[network,l_input_reshape], axis = 1)
     
     l_out = lasagne.layers.DenseLayer(network, num_units=vocab_size, W = lasagne.init.Normal(), nonlinearity=lasagne.nonlinearities.softmax)
 
@@ -163,43 +197,79 @@ def define_model(N_HIDDEN, depth):
 
     cost = T.nnet.categorical_crossentropy(network_output,target_values).mean()
 
-    all_params = lasagne.layers.get_all_params(l_out,trainable=True)
-
     print("Compiling functions ...")
     guess = theano.function([l_input.input_var],network_output,allow_input_downcast=True)
     
     return(l_out, guess)
 
+def translate_translit(predict, trans_file_name , seq_len):
+    data = codecs.open(trans_file_name, encoding='utf-8').read()
+    p = 0
+    turned = False
+    sentence_out = "\n"
+    while not turned:
+        x, non_valids, p, turned = gen_validation_data(p, data, seq_len)
+        guess = one_hot_matrix_to_sentence(predict(x),translit=False).replace(u'\u2001','').replace(u'\u2000','').replace(u'\u3233',u'ու').replace(u'\u3234',u'Ու').replace(u'\u3235',u'ՈՒ')
+        final_guess = ""
+        ind = 0
+        for c in guess:
+            if c == '#' and ind < len(non_valids):
+                final_guess += non_valids[ind]
+                ind += 1
+            else:
+                final_guess += c
+        sentence_out += final_guess
+        print(str(100.0*p/len(data)) + "% done       ", end='\r')
+    print(sentence_out)
 
-def try_it_out(predict, input_file_name, model_name, SEQ_LENGTH = 20):
+def try_it_out(predict, input_file_name, model_name, SEQ_LENGTH):
         
-        sentence_in = ""
-        sentence_real = ""
-        sentence_out = ""
-        p = 0
-        data = codecs.open(input_file_name, encoding='utf-8').read().replace(u'ու',u'\u3233').replace(u'Ու',u'\u3234').replace(u'ՈՒ',u'\u3235').replace(u'\t',u' ')
-        while True: 
-            x, y, p, turned = gen_data(p,1,data, SEQ_LENGTH)
-            sentence_in += one_hot_matrix_to_sentence(x,translit=True).replace(u'\u2001','').replace(u'\u2000','')
-            sentence_real += one_hot_matrix_to_sentence(y,translit=False).replace(u'\u2001','').replace(u'\u2000','')
-            sentence_out += one_hot_matrix_to_sentence(predict(x),translit=False).replace(u'\u2001','').replace(u'\u2000','')
-            if turned:
-                break
-        print("Computing editdistance and writing to -> " + 'results.' + model_name.split('/')[-1])
-        codecs.open('results.' + model_name.split('/')[-1] ,'w',encoding='utf-8').write(sentence_in + '\n' + 
+    sentence_in = ""
+    sentence_real = ""
+    sentence_out = ""
+    p = 0
+    turned = False
+    data = codecs.open(input_file_name, encoding='utf-8').read().replace(u'ու',u'\u3233').replace(u'Ու',u'\u3234').replace(u'ՈՒ',u'\u3235').replace(u'\t',u' ')
+    while not turned: 
+        x, y, non_valids, p, turned = gen_data(p,1,data, SEQ_LENGTH)
+        sentence_in += one_hot_matrix_to_sentence(x,translit=True).replace(u'\u2001','').replace(u'\u2000','')
+        real_without_signs = one_hot_matrix_to_sentence(y,translit=False).replace(u'\u2001','').replace(u'\u2000','')
+        ind = 0
+        real = ""
+        for c in real_without_signs:
+            if c == '#' and ind < len(non_valids):
+                real += non_valids[ind]
+                ind += 1
+            else:
+                real += c
+        sentence_real += real
+        guess = one_hot_matrix_to_sentence(predict(x),translit=False).replace(u'\u2001','').replace(u'\u2000','')
+        ind = 0
+        final_guess = ""
+        for c in guess:
+            if c == '#' and ind < len(non_valids):
+                final_guess += non_valids[ind]
+                ind += 1
+            else:
+                final_guess += c
+        sentence_out += final_guess
+        print(str(100.0*p/len(data)) + "% done       ", end='\r')
+    print("Computing editdistance and writing to -> " + 'results.' + model_name.split('/')[-1])
+    codecs.open('results.' + model_name.split('/')[-1] ,'w',encoding='utf-8').write(sentence_in + '\n' + 
                                                                sentence_real.replace(u'\u3233',u'ու').replace(u'\u3234',u'Ու').replace(u'\u3235',u'ՈՒ') + '\n' +
                                                                sentence_out.replace(u'\u3233',u'ու').replace(u'\u3234',u'Ու').replace(u'\u3235',u'ՈՒ') + '\n' +
                                                                str(editdistance.eval(sentence_real,sentence_out)) + ' ' + str(len(sentence_real)))
 
 
-def main(num_epochs=NUM_EPOCHS):
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--hdim', default=512, type=int)
     parser.add_argument('--input', default=None)
-    parser.add_argument('--batch_size', default=512, type=int)
     parser.add_argument('--seq_len', default=40, type=int)
     parser.add_argument('--model', default=None)
     parser.add_argument('--depth', default=1, type=int)
+    parser.add_argument('--translit', default=None)
+    
     args = parser.parse_args()
    
     print("Building network ...")
@@ -210,15 +280,12 @@ def main(num_epochs=NUM_EPOCHS):
         f = np.load(args.model)
         param_values = [np.float32(f[i]) for i in range(len(f))]
         lasagne.layers.set_all_param_values(output_layer, param_values)
-        
-    
-    
-        
-    
-    
     print("Testing ...")
     
-    try_it_out(guess, args.input, args.model, args.seq_len)
+    if args.translit:
+        translate_translit(guess, args.translit, args.seq_len)
+    else:
+        try_it_out(guess, args.input, args.model, args.seq_len)
     
 if __name__ == '__main__':
     main()
