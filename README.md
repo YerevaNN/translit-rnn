@@ -24,3 +24,12 @@ Finally, `plot_loss.py` command will draw the graphs for training and validation
 
     python plot_loss.py --log log.txt --window 10000 --ymax 3
     
+    
+Prepairing the data
+
+1. Download wikipedia dump (https://dumps.wikimedia.org/hywiki/20160901/hywiki-20160901-pages-articles.xml.bz2) 
+2. Extract data using this code (https://github.com/attardi/wikiextractor)
+3. Remove remaining tags (string starting with '<' )
+4. Spilt into three parts (0.8 - train, 0.1 - test, 0.1 - validation)
+
+
