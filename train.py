@@ -38,7 +38,7 @@ def main():
     
     print("Building Network ...")
    
-    (output_layer, train, cost) = utils.define_model(args.hdim, args.depth, args.lr, args.grad_clip, trans_vocab_size, vocab_size)
+    (output_layer, train, cost) = utils.define_model(args.hdim, args.depth, args.lr, args.grad_clip, trans_vocab_size, vocab_size, is_train = True)
     
     if args.model:
         f = np.load('languages/' + args.language + '/models/' + args.model)
