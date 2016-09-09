@@ -36,7 +36,7 @@ def gen_validation_data(p, data, seq_len, transliteration, trans_vocab_size, tra
     return (x,non_valids,p,turned)
          
 
-def get_residual_weight_matrix(network,csv_name):
+def get_residual_weight_matrix(network,csv_name):  ### TODO
     W = network.get_params()[0].get_value()[-63:,:]
     fr = ['" "'] + ['"' + index_to_char[i] + '"' for i in range(len(index_to_char))]
     rows = [[index_to_trans[i]] + [x for x in W[i] ] for i in range(len(index_to_trans))]

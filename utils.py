@@ -110,16 +110,16 @@ def make_vocabulary_files(data, language, transliteration):
     char_to_index = { chars[i] : i for i in range(len(chars)) }
     index_to_char = { i : chars[i] for i in range(len(chars)) }
     
-    open('languages/' + languge + '/char_to_index.json','w').write(json.dumps(char_to_index))
-    open('languages/' + languge + '/index_to_char.json','w').write(json.dumps(index_to_char))
+    open('languages/' + language + '/char_to_index.json','w').write(json.dumps(char_to_index))
+    open('languages/' + language + '/index_to_char.json','w').write(json.dumps(index_to_char))
     
     trans_chars = list(trans_chars)
     trans_to_index = { trans_chars[i] : i for i in range(len(trans_chars)) }
     index_to_trans = { i : trans_chars[i] for i in range(len(trans_chars)) }
     trans_vocab_size = len(trans_chars)
     
-    open('languages/' + languge + '/trans_to_index.json','w').write(json.dumps(trans_to_index))
-    open('languages/' + languge + '/index_to_trans.json','w').write(json.dumps(index_to_trans))
+    open('languages/' + language + '/trans_to_index.json','w').write(json.dumps(trans_to_index))
+    open('languages/' + language + '/index_to_trans.json','w').write(json.dumps(index_to_trans))
 
 def load_vocabulary(language):
     
