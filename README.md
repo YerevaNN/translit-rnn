@@ -25,11 +25,20 @@ Finally, `plot_loss.py` command will draw the graphs for training and validation
     python plot_loss.py --log log.txt --window 10000 --ymax 3
     
     
-Prepairing the data
+## Preparing the data for a given language
 
-1. Download wikipedia dump (https://dumps.wikimedia.org/hywiki/20160901/hywiki-20160901-pages-articles.xml.bz2) 
-2. Extract data using this code (https://github.com/attardi/wikiextractor)
-3. Remove remaining tags (string starting with '<' )
-4. Spilt into three parts (0.8 - train, 0.1 - test, 0.1 - validation)
+This is what we did for Armenian. Something similar will be needed for the other not-very-different languages.
 
+First, we prepare the corpus.
+
+1. Download the [Wikipedia dump](https://dumps.wikimedia.org/hywiki/) (e.g. https://dumps.wikimedia.org/hywiki/20160901/hywiki-20160901-pages-articles.xml.bz2) 
+2. Extract the dump using [WikiExtractor](https://github.com/attardi/wikiextractor)
+3. Remove the remaining tags that (strings starting with '<')
+4. Spilt the data three parts (80% - `train.txt`, 10% - `val.txt`, 10% - `test.txt`) and store them in the `languages/LANG_CODE/data/` folder
+
+Next we add some language specific configuration files:
+
+1. Populate the `languages/LANG_CODE/transliteration.json` file with romanization rules, like [this one](https://github.com/YerevaNN/translit-rnn/blob/master/languages/hy-AM/transliteration.json)
+2. Populate the `languages/LANG_CODE/long_letters.json` file with an array of the multi-symbol letters of the current language ([Armenian](https://github.com/YerevaNN/translit-rnn/blob/master/languages/hy-AM/long_letters.json) has `ու` and two capitalizations of it: `Ու` and `ՈՒ`)
+3. Run `make_vocab.py` to generate the "vocabulary"
 
