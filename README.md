@@ -2,6 +2,8 @@
 
 This is a tool to transliterate inconsistently romanized text. It is tested on Armenian (`hy-AM`). We invite everyone interested to add more languages. Instructions are below.
 
+[Read more in the corresponding blog post](http://yerevann.github.io/2016/09/09/automatic-transliteration-with-lstm/).
+
 Before training on the corpus we need to compute the vocabularies by the following command:
 
     python make_vocab.py --language hy-AM
