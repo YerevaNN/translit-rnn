@@ -22,7 +22,6 @@ def main():
    
     print("Loading Files")
     (train_text, val_text, trans) = utils.load_language_data(language = args.language)
-    train_text = train_text[:1000]
     print("Making Vocabulary Files")
     utils.make_vocabulary_files(train_text, args.language, trans)
     
