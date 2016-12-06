@@ -2,8 +2,9 @@ import matplotlib
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
 import codecs
-
 import argparse
+import numpy as np
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--log',default='log')
 parser.add_argument('--window',default=100, type=int)
@@ -14,12 +15,16 @@ args = parser.parse_args()
 def smoothen(values, window = 10):
 	new_values = []
 	i = 0
-	while i + window <= len(values) :
-		new_values.append(sum(values[i:i+window])/window)
-		i += 1
-	if i < len(values):
-		new_values.append(sum(values[i:])/(len(values) - i ) )
+	s = 0.0
+	for i in range(len(values)):
+		s += values[i]
+		if i >= window:
+			s -= values[i-window]
+			new_values.append(s/window)
+		else:
+			new_values.append(s/(i+1))
 	return new_values
+	
 def is_float(s):
     try: 
         float(s)
@@ -28,18 +33,19 @@ def is_float(s):
         return False
 
 log = codecs.open(args.log).readlines()
-losses = [float(line.split()[-7]) for line in log if len(line.split()) >= 7 and is_float(line.split()[-7]) ]
-val_losses = [float(line.split()[-1]) for line in log if line.split()[0] == 'validation' ]
+losses = [float(line.split()[5][:-1]) for line in log if len(line.split()) > 5 and is_float(line.split()[5][:-1]) ]
+val_losses = [float(line.split()[-1]) for line in log if len(line.split()) > 0 and line.split()[0] == 'Validation' ]
+
 losses = smoothen(losses, args.window)
-X = [float(line.split()[1]) for line in log if len(line.split()) >= 2 and
-        is_float(line.split()[1]) ][-len(losses):] # what the fuck :/ 
+val_losses = smoothen(val_losses, max(args.window * len(val_losses)/len(losses), 1) )
+
+x = np.linspace(0, 1, len(losses)) 
+val_x = np.linspace(0, 1, len(val_losses))
+
+
 if args.ymax > 0:
 	plt.ylim(0, args.ymax)
 
-val_step = len(X) / len(val_losses)
-if val_step * len(val_losses) >= len(X):
-    val_step -= 1
-val_x = [X[i] for i in range(val_step,len(X), val_step)]
 plt.plot(val_x, val_losses)
-plt.plot(X, losses)
+plt.plot(x, losses)
 plt.savefig(args.log + '.png')
