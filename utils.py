@@ -510,7 +510,7 @@ def data_generator(data, seq_len, batch_size, transliteration, trans_to_index, c
         if is_train:
             parsed_data = chunk_parse(data[p:p+4000000], seq_len, batch_size, transliteration, trans_to_index, char_to_index, is_train)
             p += 4000000
-            parsed_data = np.random.permutation(parsed_data)
+            random.shuffle(parsed_data)
             for batch in parsed_data:
                 yield batch
         else:
