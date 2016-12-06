@@ -81,6 +81,7 @@ def main():
         file_name = 'languages/{}/models/{}.hdim{}.depth{}.seq_len{}.bs{}.epoch{}.loss{:.4f}'.format(args.language, args.model_name_prefix, args.hdim, args.depth, args.seq_len, args.batch_size, epoch, avg_cost / count)
         print("saving to -> " + file_name)
         np.save(file_name, lasagne.layers.get_all_param_values(output_layer))
+
         
 if __name__ == '__main__':
     main()

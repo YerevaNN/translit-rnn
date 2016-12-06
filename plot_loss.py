@@ -5,6 +5,7 @@ import codecs
 import argparse
 import numpy as np
 
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--log',default='log')
 parser.add_argument('--window',default=100, type=int)
@@ -23,8 +24,7 @@ def smoothen(values, window = 10):
 			new_values.append(s/window)
 		else:
 			new_values.append(s/(i+1))
-	return new_values
-	
+	return new_values=
 def is_float(s):
     try: 
         float(s)

@@ -143,22 +143,19 @@ def main():
     (test_text, trans, long_letter_reverse_mapping) = utils.load_language_data(language = args.language, is_train = False)
     print("Building network ...")
     (output_layer, predict) = utils.define_model(args.hdim, args.depth, trans_vocab_size = trans_vocab_size, vocab_size = vocab_size, is_train = False)
-    
-    # get_residual_weight_matrix(output_layer, "residual", index_to_char, index_to_trans)
-    # exit(0)
-    #test_text = test_text[:35000]
-    
     if args.model:
         f = np.load(args.model)
         param_values = [np.float32(f[i]) for i in range(len(f))]
         lasagne.layers.set_all_param_values(output_layer, param_values)
     print("Testing ...")
+    
     if args.translit_path:
         data = codecs.open(args.translit_path, 'r', encoding='utf-8').read()
         translate_romanized(predict, data, args.seq_len, trans, trans_vocab_size, trans_to_index, index_to_char, long_letter_reverse_mapping)
 
     else:
         test(predict, test_text, args.language, args.model, args.seq_len, long_letter_reverse_mapping, trans, trans_to_index, char_to_index, index_to_trans, index_to_char)
+        
 if __name__ == '__main__':
     main()
 
