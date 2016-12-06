@@ -24,7 +24,7 @@ def smoothen(values, window = 10):
 			new_values.append(s/window)
 		else:
 			new_values.append(s/(i+1))
-	return new_values=
+	return new_values
 def is_float(s):
     try: 
         float(s)
