@@ -10,7 +10,7 @@ import random
 from lasagne.init import Orthogonal, Normal
 
 #Lasagne Seed for Reproducibility
-
+random.seed(1)
 lasagne.random.set_rng(np.random.RandomState(1))
 
 def isNativeLetter(s, transliteration):

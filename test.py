@@ -72,11 +72,11 @@ def translate_romanized(predict, data, seq_len, transliteration, trans_vocab_siz
         print(str(100.0*p/len(data)) + "% done              ", end='\r')
     print(sentence_out)
 
-def test(predict, data, language, model_name, seq_len, long_letter_reverse_mapping, transliteration, trans_to_index, char_to_index, index_to_trans, index_to_char):
+def test(predict, data, language, model_name, seq_len, batch_size, long_letter_reverse_mapping, transliteration, trans_to_index, char_to_index, index_to_trans, index_to_char):
     sentences = []
     p = 0
     
-    for ((x_list, y_list, indices, delimiters), non_valids_list) in utils.data_generator(data, seq_len, 100, transliteration, trans_to_index, char_to_index, is_train = False):
+    for ((x_list, y_list, indices, delimiters), non_valids_list) in utils.data_generator(data, seq_len, batch_size, transliteration, trans_to_index, char_to_index, is_train = False):
         
         guess_list = predict(x_list)[0].reshape(y_list.shape)
         
@@ -130,6 +130,7 @@ def test(predict, data, language, model_name, seq_len, long_letter_reverse_mappi
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--hdim', default=512, type=int)
+    parser.add_argument('--batch_size', default=100, type=int)
     parser.add_argument('--seq_len', default=40, type=int)
     parser.add_argument('--model', default=None)
     parser.add_argument('--depth', default=1, type=int)
@@ -154,7 +155,7 @@ def main():
         translate_romanized(predict, data, args.seq_len, trans, trans_vocab_size, trans_to_index, index_to_char, long_letter_reverse_mapping)
 
     else:
-        test(predict, test_text, args.language, args.model, args.seq_len, long_letter_reverse_mapping, trans, trans_to_index, char_to_index, index_to_trans, index_to_char)
+        test(predict, test_text, args.language, args.model, args.seq_len, args.batch_size, long_letter_reverse_mapping, trans, trans_to_index, char_to_index, index_to_trans, index_to_char)
         
 if __name__ == '__main__':
     main()
