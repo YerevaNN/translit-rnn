@@ -61,8 +61,10 @@ def main():
             count += 1
             num_of_samples += x.shape[0]
             num_of_chars += x.shape[0] * x.shape[1]
+            
             print("On step #{} loss is {:.4f}, samples passed {}, chars_passed {}, {:.4f}% of an epoch {}"\
                   .format(count, sample_cost, num_of_samples, num_of_chars, 100.0*num_of_chars/len(train_text), epoch))
+                  
             avg_cost += sample_cost
         date_after = datetime.now()
         print("After epoch {} average loss is {:.4f} Time {} sec.".format( epoch , avg_cost/count, (date_after - date_at_beginning).total_seconds()))
