@@ -7,6 +7,7 @@ import lasagne
 import codecs
 import json
 import random
+from lasagne.init import Orthogonal, Normal
 
 #Lasagne Seed for Reproducibility
 
@@ -21,7 +22,7 @@ def isNativeLetter(s, transliteration):
             return False
     return True
 
-def valid(sequence, transliteration):
+def valid(transliteration, sequence):
     
     ### Replaces all non given characters with '#'
     
@@ -98,7 +99,7 @@ def make_vocabulary_files(data, language, transliteration):
                 native.append(u'\u2000')
                 translit.append(trans_char[1])
             native.append(raw_native[ind])
-        translit = valid(translit, transliteration)[0]
+        translit = valid(transliteration, translit)[0]
         for i in range(len(native)):
             if translit[i] == '#':
                 native[i] = '#'
@@ -154,7 +155,7 @@ def one_hot_matrix_to_sentence(data, index_to_character):
 
 def load_language_data(language, is_train = True):
     
-    TEST_DATA_PATH = 'languages/' + language + '/data/test.txt'
+    TEST_DATA_PATH = 'languages/' + language + '/data/test_sartre.txt'
     VALIDATION_DATA_PATH = 'languages/' + language + '/data/val.txt'
     TRAIN_DATA_PATH = 'languages/' + language + '/data/train.txt'
     long_letters = json.loads(codecs.open('languages/' + language + '/long_letters.json','r',encoding='utf-8').read())
@@ -204,10 +205,10 @@ def gen_data(p, seq_len, batch_size, data, transliteration, trans_to_index, char
             if new_p != len(data):
                 if max([raw_native.rfind(u' '),raw_native.rfind(u'\t'),raw_native.rfind(u'\n')]) > 0:
                     new_p = max([raw_native.rfind(u' '),raw_native.rfind(u'\t'),raw_native.rfind(u'\n')]) 
-                    raw_native = ' ' + raw_native[:new_p] + ' '
-                    p += new_p
+                    raw_native = ' ' + raw_native[:new_p+1] + ' '
+                    p += new_p + 1
                 else:
-                    p = new_p
+                    p = new_p + 1
                     raw_native = ' ' + raw_native + ' '
             else:
                 raw_native = ' ' + raw_native + ' '
@@ -224,12 +225,12 @@ def gen_data(p, seq_len, batch_size, data, transliteration, trans_to_index, char
         for ind in range(1,len(raw_native)-1):
             trans_char = toTranslit(raw_native[ind-1], raw_native[ind], raw_native[ind+1], transliteration)
             translit.append(trans_char[0])
+            native.append(raw_native[ind])
             trans_ind = 1
             while len(trans_char) > trans_ind:
                 native.append(u'\u2000')
                 translit.append(trans_char[trans_ind])
                 trans_ind += 1
-            native.append(raw_native[ind])
             
         (translit,non_valids) = valid(translit, transliteration)
         for ind in range(len(native)):
@@ -274,15 +275,47 @@ def define_model(N_HIDDEN, depth, LEARNING_RATE = 0.01,  GRAD_CLIP = 100, trans_
         
         l_forward = lasagne.layers.LSTMLayer(
             network, N_HIDDEN, grad_clipping=GRAD_CLIP,
+            ingate=lasagne.layers.Gate(
+                                    W_in=Orthogonal(gain=1.5),
+                                    W_hid=Orthogonal(gain=1.5),
+                                    W_cell=Normal(0.1)),
+            forgetgate=lasagne.layers.Gate(
+                                    W_in=Orthogonal(gain=1.5),
+                                    W_hid=Orthogonal(gain=1.5),
+                                    W_cell=Normal(0.1)),
+            cell=lasagne.layers.Gate(W_cell=None,
+                                    nonlinearity=lasagne.nonlinearities.tanh,
+                                    W_in=Orthogonal(gain=1.5),
+                                    W_hid=Orthogonal(gain=1.5)),
+            outgate=lasagne.layers.Gate(
+                                    W_in=Orthogonal(gain=1.5),
+                                    W_hid=Orthogonal(gain=1.5),
+                                    W_cell=Normal(0.1)),
             backwards=False)
         
         l_backward = lasagne.layers.LSTMLayer(
             network, N_HIDDEN, grad_clipping=GRAD_CLIP,
+            ingate=lasagne.layers.Gate(
+                                    W_in=Orthogonal(gain=1.5),
+                                    W_hid=Orthogonal(gain=1.5),
+                                    W_cell=Normal(0.1)),
+            forgetgate=lasagne.layers.Gate(
+                                    W_in=Orthogonal(gain=1.5),
+                                    W_hid=Orthogonal(gain=1.5),
+                                    W_cell=Normal(0.1)),
+            cell=lasagne.layers.Gate(W_cell=None,
+                                    nonlinearity=lasagne.nonlinearities.tanh,
+                                    W_in=Orthogonal(gain=1.5),
+                                    W_hid=Orthogonal(gain=1.5)),
+            outgate=lasagne.layers.Gate(
+                                    W_in=Orthogonal(gain=1.5),
+                                    W_hid=Orthogonal(gain=1.5),
+                                    W_cell=Normal(0.1)),
             backwards=True)
         
-        network = lasagne.layers.ConcatLayer(incomings=[l_forward,l_backward], axis = 2)
-        network = lasagne.layers.ReshapeLayer(network, (-1, 2*N_HIDDEN))
-        network = lasagne.layers.DenseLayer(network, num_units=N_HIDDEN, W = lasagne.init.Normal(), nonlinearity=lasagne.nonlinearities.tanh)
+        concat_layer = lasagne.layers.ConcatLayer(incomings=[l_forward,l_backward], axis = 2)
+        concat_layer = lasagne.layers.ReshapeLayer(concat_layer, (-1, 2*N_HIDDEN))
+        network = lasagne.layers.DenseLayer(concat_layer, num_units=N_HIDDEN, W = Orthogonal(), nonlinearity=lasagne.nonlinearities.tanh)
         network = lasagne.layers.ReshapeLayer(network, (symbolic_batch_size, -1, N_HIDDEN))
         
         depth -= 1
@@ -296,6 +329,8 @@ def define_model(N_HIDDEN, depth, LEARNING_RATE = 0.01,  GRAD_CLIP = 100, trans_
     target_values = T.dmatrix('target_output')
     
     network_output = lasagne.layers.get_output(l_out)
+    network = lasagne.layers.get_output(network)
+    concat_layer = lasagne.layers.get_output(concat_layer)
 
     cost = T.nnet.categorical_crossentropy(network_output,target_values).mean()
 
@@ -307,11 +342,179 @@ def define_model(N_HIDDEN, depth, LEARNING_RATE = 0.01,  GRAD_CLIP = 100, trans_
     if is_train:
         
         print("Computing Updates ...")
-        updates = lasagne.updates.adagrad(cost, all_params, LEARNING_RATE)
+        #updates = lasagne.updates.adagrad(cost, all_params, LEARNING_RATE)
+        updates = lasagne.updates.adam(cost, all_params, beta1=0.5, learning_rate=LEARNING_RATE) # from DCGAN paper
+        
         compute_cost = theano.function([l_input.input_var, target_values], cost, allow_input_downcast=True)
         train = theano.function([l_input.input_var, target_values], cost, updates=updates, allow_input_downcast=True)
-        return(l_out,train, compute_cost)
+        return(l_out, train, compute_cost)
     
     else:
-        guess = theano.function([l_input.input_var],network_output,allow_input_downcast=True)
+        guess = theano.function([l_input.input_var],[network_output,network,concat_layer],allow_input_downcast=True)
         return(l_out, guess)
+
+def isDelimiter(c):
+    return c in [u'\n', u'\t', u' ']
+
+def chunk_parse(chunk, seq_len, batch_size, transliteration, trans_to_index, char_to_index, is_train = False):
+        
+    trans_vocab_size = len(trans_to_index)
+    vocab_size = len(char_to_index)
+    
+    delimiters = [u'']
+    words = []
+    word = ''
+    i = 0
+    while i < len(chunk):
+        if isDelimiter(chunk[i]):
+            words.append(word)
+            word = ''
+            delimiter = chunk[i]
+            while i+1 < len(chunk) and isDelimiter(chunk[i+1]):
+                i += 1
+                delimiter += chunk[i]
+            delimiters.append(delimiter)
+        else:
+            word += chunk[i]
+            
+        i += 1
+        
+    if word != '':
+        words.append(word)
+    
+    sequences = []
+    s = ""
+    sequence_delimiters = [u'']
+    
+    for (word,delimiter) in zip(words,delimiters):
+        if len(s) + len(word) <= seq_len:
+            s += delimiter + word
+        elif len(s) != 0:
+            sequences.append(s);
+            s = word
+            sequence_delimiters.append(delimiter)
+    
+    if s != '':
+        sequences.append(s)
+    
+    samples = []
+    for seq in sequences:
+        
+        native_letter_count = sum([1 for c in seq if isNativeLetter(c, transliteration)])
+        if is_train and native_letter_count * 3 < len(seq):
+            continue
+        
+        seq = u' ' + seq + u' '
+        translit = []
+        native = []
+        for ind in range(1,len(seq)-1):
+            trans_char = toTranslit(seq[ind-1], seq[ind], seq[ind+1], transliteration)
+            translit.append(trans_char[0])
+            native.append(seq[ind])
+            trans_ind = 1
+            while len(trans_char) > trans_ind:
+                native.append(u'\u2000')
+                translit.append(trans_char[trans_ind])
+                trans_ind += 1
+                
+        translit, non_valids = valid(transliteration, translit)
+        for ind in range(len(native)):
+            if translit[ind] == '#':
+                native[ind] = '#' 
+        samples.append( (translit, native, non_valids))
+
+        '''
+        translits.append(translit)
+        natives.append(native)
+        non_valids_list.append(non_valids)
+        '''
+    if is_train:
+        samples.sort(key = lambda x: len(x[0]), reverse = True)
+        
+        buckets = {}
+        for tmp in samples:
+            if len(tmp[0]) not in buckets.keys():
+                buckets[len(tmp[0])] = []
+            buckets[len(tmp[0])].append(tmp)
+            
+        del samples
+        for i in buckets:
+            random.shuffle(buckets[i])
+        
+        batches = []
+        for i in buckets.keys():
+            j = 0
+            while j < len(buckets[i]):
+                batches.append(list(buckets[i][j:j+batch_size]))
+                j += batch_size
+        del buckets
+        
+        np_batches = []
+        
+        for batch in batches:
+            x = np.zeros( (len(batch), len(batch[0][0]), trans_vocab_size) )
+            y = np.zeros( (len(batch), len(batch[0][0]), vocab_size) )
+            for i in range(len(batch)):
+                for j in range(len(batch[i][0])):
+                    x[i, j, trans_to_index[batch[i][0][j]] ] = 1
+                    y[i, j, char_to_index[batch[i][1][j]] ] = 1
+            np_batches.append((x,y))
+        
+        return np_batches
+    
+    else:
+        indexed_samples = sorted(zip(samples, range(len(samples)), sequence_delimiters) , key = lambda x: (len(x[0][0]), x[1]) , reverse = True)
+        #samples, indices = zip(indexed_samples)
+        #del indexed_samples
+        
+        buckets = {}
+        for tmp in indexed_samples:
+            if len(tmp[0][0]) not in buckets.keys():
+                buckets[len(tmp[0][0])] = []
+            buckets[len(tmp[0][0])].append(tmp)
+            
+        del indexed_samples
+        
+        batches = []
+        for i in buckets.keys():
+            j = 0
+            while j < len(buckets[i]):
+                batches.append(list(buckets[i][j:j+batch_size]))
+                j += batch_size
+        del buckets
+        
+        np_batches = []
+        non_vals = []
+        
+        
+        for batch in batches:
+            indices = np.zeros( len(batch) )
+            delimiters = [0] * len(batch)
+            x = np.zeros( (len(batch), len(batch[0][0][0]), trans_vocab_size) )
+            y = np.zeros( (len(batch), len(batch[0][0][0]), vocab_size) )
+            non_vals.append([])
+            for i in range(len(batch)):
+                indices[i] = batch[i][1]
+                delimiters[i] = batch[i][2]
+                non_vals[-1].append(batch[i][0][2])
+                for j in range(len(batch[i][0][0])):
+                    x[i, j, trans_to_index[batch[i][0][0][j]] ] = 1
+                    y[i, j, char_to_index[batch[i][0][1][j]] ] = 1
+            np_batches.append( (x, y, indices, delimiters) )
+            
+        return (np_batches, non_vals)
+
+def data_generator(data, seq_len, batch_size, transliteration, trans_to_index, char_to_index, is_train = False):
+    p = 0
+    while p < len(data):
+        if is_train:
+            parsed_data = chunk_parse(data[p:p+4000000], seq_len, batch_size, transliteration, trans_to_index, char_to_index, is_train)
+            p += 4000000
+            parsed_data = np.random.permutation(parsed_data)
+            for batch in parsed_data:
+                yield batch
+        else:
+            parsed_data, non_valids = chunk_parse(data[p:p+4000000], seq_len, batch_size, transliteration, trans_to_index, char_to_index, is_train)
+            p += 4000000
+            for batch in zip(parsed_data, non_valids):
+                yield batch

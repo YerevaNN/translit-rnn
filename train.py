@@ -19,9 +19,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--hdim', default=512, type=int)
     parser.add_argument('--grad_clip', default=100, type=int)
-    parser.add_argument('--lr', default=0.01, type=float)
+    parser.add_argument('--lr', default=0.0001, type=float)
     parser.add_argument('--batch_size', default=50, type=int)
-    parser.add_argument('--num_epochs', default=10, type=int)
+    parser.add_argument('--num_epochs', default=50, type=int)
     parser.add_argument('--seq_len', default=60, type=int)
     parser.add_argument('--depth', default=1, type=int)
     parser.add_argument('--model', default=None)
@@ -38,7 +38,7 @@ def main():
     
     print("Building Network ...")
    
-    (output_layer, train, cost) = utils.define_model(args.hdim, args.depth, args.lr, args.grad_clip, trans_vocab_size, vocab_size)
+    (output_layer, train, cost) = utils.define_model(args.hdim, args.depth, args.lr, args.grad_clip, trans_vocab_size, vocab_size, is_train = True)
     
     if args.model:
         f = np.load('languages/' + args.language + '/models/' + args.model)
@@ -46,39 +46,39 @@ def main():
         lasagne.layers.set_all_param_values(output_layer, param_values)
     
     print("Training ...")
-    p = int(len(train_text) * args.start_from) + 1
+
+
     step_cnt = 0
-    avg_cost = 0
-    it = 0
-    while it < args.num_epochs:
-        avg_cost = 0
+    for epoch in range(args.num_epochs):
+        avg_cost = 0.0
         date_at_beginning = datetime.now()
-        non_native_skipped = 0
-        for _ in range(PRINT_FREQ):
-            x,y,p,turned, non_native_sequences = utils.gen_data(p,args.seq_len, args.batch_size, train_text, trans, trans_to_index, char_to_index)
-            if turned:
-                it += 1
-            avg_cost += train(x, np.reshape(y,(-1,vocab_size)))
-            non_native_skipped += non_native_sequences
+        count = 0
+        num_of_samples = 0
+        num_of_chars = 0
+        for (x, y) in utils.data_generator(train_text, args.seq_len, args.batch_size, trans, trans_to_index, char_to_index, is_train = True):
+            sample_cost = train(x, np.reshape(y,(-1,vocab_size)))
+            sample_cost = float(sample_cost)
+            count += 1
+            num_of_samples += x.shape[0]
+            num_of_chars += x.shape[0] * x.shape[1]
+            print("On step #{} loss is {:.4f}, samples passed {}, chars_passed {}, {:.4f}% of an epoch {}"\
+                  .format(count, sample_cost, num_of_samples, num_of_chars, 100.0*num_of_chars/len(train_text), epoch))
+            avg_cost += sample_cost
         date_after = datetime.now()
-        print("Epoch {} average loss = {} Time {} sec. Nonnatives skipped {}".format(1.0 * it + 1.0 * p / data_size , avg_cost / PRINT_FREQ, (date_after - date_at_beginning).total_seconds(), non_native_skipped))
+        print("After epoch {} average loss is {:.4f} Time {} sec.".format( epoch , avg_cost/count, (date_after - date_at_beginning).total_seconds()))
         
-        step_cnt += 1
-        if True: #step_cnt * args.batch_size > 100000:
-            print('computing validation loss...')
-            val_turned = False
-            val_p = 0
-            val_steps = 0.
-            val_cost = 0.
-            while not val_turned:
-                x, y, val_p, val_turned, non_native = utils.gen_data(val_p,args.seq_len, args.batch_size, val_text, trans, trans_to_index, char_to_index)
-                val_steps += 1
+        if epoch % 1 == 0:
+            print('Computing validation loss...')
+            val_cost = 0.0
+            val_count = 0.0
+            for ((x_list, y_list, indices, delimiters), non_valids_list) in utils.data_generator(val_text, args.seq_len, args.batch_size, trans, trans_to_index, char_to_index, is_train = False):
                 val_cost += cost(x,np.reshape(y,(-1,vocab_size)))
-            print('validation loss is ' + str(val_cost/val_steps))
-            file_name = 'languages/' + args.language + '/models/' + args.model_name_prefix  +  '.hdim' + str(args.hdim) + '.depth' + str(args.depth) + '.seq_len' + str(args.seq_len) + '.bs' + str(args.batch_size) + '.epoch' + str(1.0 * it + 1.0 * p / data_size) + '.loss' + str(avg_cost / PRINT_FREQ) + '.npz'
-            print("saving to -> " + file_name)
-            np.save(file_name, lasagne.layers.get_all_param_values(output_layer))
-            step_cnt = 0
+                val_count += 1
+            print('Validation loss is {}'.format(val_cost/val_count))
+
+        file_name = 'languages/{}/models/{}.hdim{}.depth{}.seq_len{}.bs{}.epoch{}.loss{:.4f}'.format(args.language, args.model_name_prefix, args.hdim, args.depth, args.seq_len, args.batch_size, epoch, avg_cost / count)
+        print("saving to -> " + file_name)
+        np.save(file_name, lasagne.layers.get_all_param_values(output_layer))
         
 if __name__ == '__main__':
     main()
