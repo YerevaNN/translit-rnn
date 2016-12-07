@@ -39,9 +39,13 @@ val_losses = [float(line.split()[-1]) for line in log if len(line.split()) > 0 a
 
 losses = smoothen(losses, args.window)
 val_losses = smoothen(val_losses, max(args.window * len(val_losses)/len(losses), 1) )
+i = -1
+while log[i].rfind('epoch ') == -1:
+	i -= 1
+epoch_point = float(log[i].split()[-4]) + float(log[i].split()[-8][:-1])/100
 
-x = np.linspace(0, 1, len(losses)) 
-val_x = np.linspace(0, 1, len(val_losses))
+x = np.linspace(0, epoch_point, len(losses)) 
+val_x = np.linspace(0, epoch_point, len(val_losses))
 
 
 if args.ymax > 0:
