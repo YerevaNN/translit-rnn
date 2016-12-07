@@ -11,9 +11,6 @@ import argparse
 import utils
 from datetime import datetime
 
-PRINT_FREQ = 1
-
-
 def main():
     
     parser = argparse.ArgumentParser()
@@ -46,12 +43,11 @@ def main():
         lasagne.layers.set_all_param_values(output_layer, param_values)
     
     print("Training ...")
-
-
     step_cnt = 0
+    date_at_beginning = datetime.now()
+    last_time = date_at_beginning
     for epoch in range(args.num_epochs):
         avg_cost = 0.0
-        date_at_beginning = datetime.now()
         count = 0
         num_of_samples = 0
         num_of_chars = 0
@@ -62,25 +58,28 @@ def main():
             num_of_samples += x.shape[0]
             num_of_chars += x.shape[0] * x.shape[1]
             
-            print("On step #{} loss is {:.4f}, samples passed {}, chars_passed {}, {:.4f}% of an epoch {}"\
-                  .format(count, sample_cost, num_of_samples, num_of_chars, 100.0*num_of_chars/len(train_text), epoch))
+            time_now = datetime.now()
+            if (time_now - last_time).total_seconds() > 60 * 1: # 10 minutes
+                print('Computing validation loss...')
+                val_cost = 0.0
+                val_count = 0.0
+                for ((x_val, y_val, indices, delimiters), non_valids_list) in utils.data_generator(val_text, args.seq_len, args.batch_size, trans, trans_to_index, char_to_index, is_train = False):
+                    val_cost += cost(x_val,np.reshape(y_val,(-1,vocab_size)))
+                    val_count += 1
+                print('Validation loss is {}'.format(val_cost/val_count))
+                
+                file_name = 'languages/{}/models/{}.hdim{}.depth{}.seq_len{}.bs{}.time{:4f}.epoch{}.loss{:.4f}'.format(args.language, args.model_name_prefix, args.hdim, args.depth, args.seq_len, args.batch_size, (time_now - date_at_beginning).total_seconds()/60, epoch, avg_cost / count)
+                print("saving to -> " + file_name)
+                np.save(file_name, lasagne.layers.get_all_param_values(output_layer))
+                last_time = datetime.now()
+            
+            print("On step #{} loss is {:.4f}, samples passed {}, chars_passed {}, {:.4f}% of an epoch {} time passed {:4f}"\
+                  .format(count, sample_cost, num_of_samples, num_of_chars, 100.0*num_of_chars/len(train_text), epoch, (time_now - date_at_beginning).total_seconds()/60.0))
                   
             avg_cost += sample_cost
-        date_after = datetime.now()
         print("After epoch {} average loss is {:.4f} Time {} sec.".format( epoch , avg_cost/count, (date_after - date_at_beginning).total_seconds()))
-        
-        if epoch % 1 == 0:
-            print('Computing validation loss...')
-            val_cost = 0.0
-            val_count = 0.0
-            for ((x_list, y_list, indices, delimiters), non_valids_list) in utils.data_generator(val_text, args.seq_len, args.batch_size, trans, trans_to_index, char_to_index, is_train = False):
-                val_cost += cost(x,np.reshape(y,(-1,vocab_size)))
-                val_count += 1
-            print('Validation loss is {}'.format(val_cost/val_count))
 
-        file_name = 'languages/{}/models/{}.hdim{}.depth{}.seq_len{}.bs{}.epoch{}.loss{:.4f}'.format(args.language, args.model_name_prefix, args.hdim, args.depth, args.seq_len, args.batch_size, epoch, avg_cost / count)
-        print("saving to -> " + file_name)
-        np.save(file_name, lasagne.layers.get_all_param_values(output_layer))
+        
 
         
 if __name__ == '__main__':

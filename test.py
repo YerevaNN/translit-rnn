@@ -109,7 +109,7 @@ def test(predict, data, language, model_name, seq_len, batch_size, long_letter_r
             sentences.append((index, sentence_in, sentence_real, final_guess, delimiter))
             
             p += len(x)
-       # print(str(100.0*p/len(data)) + "% done       ", end='\r')
+            print(str(100.0*p/len(data)) + "% done       ", end='\r')
     
     sentences.sort()
     

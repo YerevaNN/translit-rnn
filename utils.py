@@ -508,13 +508,13 @@ def data_generator(data, seq_len, batch_size, transliteration, trans_to_index, c
     p = 0
     while p < len(data):
         if is_train:
-            parsed_data = chunk_parse(data[p:p+4000000], seq_len, batch_size, transliteration, trans_to_index, char_to_index, is_train)
-            p += 4000000
+            parsed_data = chunk_parse(data[p:p+3000000], seq_len, batch_size, transliteration, trans_to_index, char_to_index, is_train)
+            p += 3000000
             random.shuffle(parsed_data)
             for batch in parsed_data:
                 yield batch
         else:
-            parsed_data, non_valids = chunk_parse(data[p:p+4000000], seq_len, batch_size, transliteration, trans_to_index, char_to_index, is_train)
-            p += 4000000
+            parsed_data, non_valids = chunk_parse(data[p:p+1000000], seq_len, batch_size, transliteration, trans_to_index, char_to_index, is_train)
+            p += 1000000
             for batch in zip(parsed_data, non_valids):
                 yield batch
