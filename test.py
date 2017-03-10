@@ -12,7 +12,7 @@ import utils
 
 def gen_validation_data(p, data, seq_len, transliteration, trans_vocab_size, trans_to_index):
     
-    x = np.zeros((1,int(seq_len),trans_vocab_size))
+    x = np.zeros((1,min(int(seq_len), len(data) - p),trans_vocab_size))
     turned = False
     new_p = min(p+seq_len,len(data))
     raw_translit = data[p:new_p]
@@ -30,10 +30,8 @@ def gen_validation_data(p, data, seq_len, transliteration, trans_vocab_size, tra
     (translit,non_valids) = utils.valid(transliteration, raw_translit)
     for ind in range(len(translit)):
         x[0,ind,trans_to_index[translit[ind]]] = 1
-    for ind in range(len(translit),int(seq_len)):
-        x[0,ind,trans_to_index[u'\u2001']] = 1
     
-    return (x,non_valids,p,turned)
+    return (x, non_valids, p, turned)
          
 
 def get_residual_weight_matrix(network,csv_name, index_to_char, index_to_trans):
@@ -56,7 +54,6 @@ def translate_romanized(predict, data, seq_len, transliteration, trans_vocab_siz
     sentence_out = "\n"
     while not turned:
         x, non_valids, p, turned = gen_validation_data(p, data, seq_len, transliteration, trans_vocab_size, trans_to_index)
-        print(x.shape)
         guess = utils.one_hot_matrix_to_sentence(predict(x)[0],index_to_char).replace(u'\u2001','').replace(u'\u2000','')
         for letter in long_letter_reverse_mapping:
             guess = guess.replace(letter,long_letter_reverse_mapping[letter])
