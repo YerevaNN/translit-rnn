@@ -8,6 +8,7 @@ import lasagne
 import codecs
 import json
 import argparse
+import random
 import utils
 from datetime import datetime
 
@@ -16,7 +17,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--hdim', default=512, type=int)
     parser.add_argument('--grad_clip', default=100, type=int)
-    parser.add_argument('--lr', default=0.0001, type=float)
+    parser.add_argument('--lr', default=0.01, type=float)
     parser.add_argument('--batch_size', default=50, type=int)
     parser.add_argument('--num_epochs', default=50, type=int)
     parser.add_argument('--seq_len', default=60, type=int)
@@ -47,6 +48,9 @@ def main():
     date_at_beginning = datetime.now()
     last_time = date_at_beginning
     for epoch in range(args.num_epochs):
+        train_text = train_text.split(u'։')
+        random.shuffle(train_text)
+        train_text = u'։'.join(train_text)
         avg_cost = 0.0
         count = 0
         num_of_samples = 0
@@ -64,11 +68,11 @@ def main():
                 val_cost = 0.0
                 val_count = 0.0
                 for ((x_val, y_val, indices, delimiters), non_valids_list) in utils.data_generator(val_text, args.seq_len, args.batch_size, trans, trans_to_index, char_to_index, is_train = False):
-                    val_cost += cost(x_val,np.reshape(y_val,(-1,vocab_size)))
-                    val_count += 1
+                    val_cost += x_val.shape[0] *cost(x_val,np.reshape(y_val,(-1,vocab_size)))
+                    val_count += x_val.shape[0]
                 print('Validation loss is {}'.format(val_cost/val_count))
                 
-                file_name = 'languages/{}/models/{}.hdim{}.depth{}.seq_len{}.bs{}.time{:4f}.epoch{}.loss{:.4f}'.format(args.language, args.model_name_prefix, args.hdim, args.depth, args.seq_len, args.batch_size, (time_now - date_at_beginning).total_seconds()/60, epoch, avg_cost / count)
+                file_name = 'languages/{}/models/{}.hdim{}.depth{}.seq_len{}.bs{}.time{:4f}.epoch{}.loss{:.4f}'.format(args.language, args.model_name_prefix, args.hdim, args.depth, args.seq_len, args.batch_size, (time_now - date_at_beginning).total_seconds()/60, epoch, val_cost/val_count)
                 print("saving to -> " + file_name)
                 np.save(file_name, lasagne.layers.get_all_param_values(output_layer))
                 last_time = datetime.now()
@@ -77,6 +81,7 @@ def main():
                   .format(count, sample_cost, num_of_samples, num_of_chars, 100.0*num_of_chars/len(train_text), epoch, (time_now - date_at_beginning).total_seconds()/60.0))
                   
             avg_cost += sample_cost
+	date_after = datetime.now()
         print("After epoch {} average loss is {:.4f} Time {} sec.".format( epoch , avg_cost/count, (date_after - date_at_beginning).total_seconds()))
 
         

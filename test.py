@@ -27,7 +27,7 @@ def gen_validation_data(p, data, seq_len, transliteration, trans_vocab_size, tra
     else:
         p = 0
         turned = True
-    (translit,non_valids) = utils.valid(raw_translit, transliteration)
+    (translit,non_valids) = utils.valid(transliteration, raw_translit)
     for ind in range(len(translit)):
         x[0,ind,trans_to_index[translit[ind]]] = 1
     for ind in range(len(translit),int(seq_len)):
@@ -56,7 +56,8 @@ def translate_romanized(predict, data, seq_len, transliteration, trans_vocab_siz
     sentence_out = "\n"
     while not turned:
         x, non_valids, p, turned = gen_validation_data(p, data, seq_len, transliteration, trans_vocab_size, trans_to_index)
-        guess = utils.one_hot_matrix_to_sentence(predict(x),index_to_char).replace(u'\u2001','').replace(u'\u2000','')
+        print(x.shape)
+        guess = utils.one_hot_matrix_to_sentence(predict(x)[0],index_to_char).replace(u'\u2001','').replace(u'\u2000','')
         for letter in long_letter_reverse_mapping:
             guess = guess.replace(letter,long_letter_reverse_mapping[letter])
 
@@ -116,16 +117,34 @@ def test(predict, data, language, model_name, seq_len, batch_size, long_letter_r
     sentence_in = ''.join([ i[4] + i[1]  for i in sentences])
     sentence_real = ''.join([ i[4] + i[2] for i in sentences])
     sentence_out = ''.join([ i[4] + i[3] for i in sentences])
-        
+
+    print("Computing editdistance")
+    distance = 0
+    lower_distance = 0
+    lower_length = 0
+    for (i, j) in zip(sentence_real.split('\n'), sentence_out.split('\n')):
+        tmp = [(tmp_i, tmp_j) for (tmp_i, tmp_j) in zip(i.split(' '), j.split(' ')) if len(tmp_i) > 0 and not (tmp_i[0] >= u'Ա' and tmp_i[0] <= u'Ֆ')]
+        if len(tmp) > 0:
+            i_tmp, j_tmp = zip(*tmp)
+            i_tmp = ' '.join(i_tmp)
+            j_tmp = ' '.join(j_tmp)
+            lower_distance += editdistance.eval(i_tmp, j_tmp)
+            lower_length += len(i_tmp)
+        distance += editdistance.eval(i,j)
+
+    print("Length is {}, Distance is {}, Lower_Length is {}, Lower_Distance is {}".format(len(sentence_real), \
+                                                                                          distance, lower_length, lower_distance))
+    print("Accuracy is {} %, Accuracy in low words is {} %".format(100 - (distance*100.0) / len(sentence_real),\
+                                                                   100 - (lower_distance*100.0) / lower_length))
     for letter in long_letter_reverse_mapping:
         sentence_real = sentence_real.replace(letter, long_letter_reverse_mapping[letter])
         sentence_out = sentence_out.replace(letter,long_letter_reverse_mapping[letter])
-    print("Computing editdistance and writing to -> " + 'languages/' + language + '/results.' + model_name.split('/')[-1])
+
+    print("Writing to -> " + 'languages/' + language + '/results.' + model_name.split('/')[-1])
     
     fl = codecs.open('languages/' + language + '/results.' + model_name.split('/')[-1],'w',encoding='utf-8')
     fl.write(sentence_in + '\n' + sentence_real + '\n' + sentence_out + '\n')
-    fl.write(str(editdistance.eval(sentence_real,sentence_out)) + ' / ' + str(len(sentence_real)))
-
+    fl.write( str(distance) + ' / ' + str(len(sentence_real)) + "  " + str(len(sentence_out)))
 
 def main():
     parser = argparse.ArgumentParser()
