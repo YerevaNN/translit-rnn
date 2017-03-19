@@ -81,11 +81,7 @@ def main():
                   .format(count, sample_cost, num_of_samples, num_of_chars, 100.0*num_of_chars/len(train_text), epoch, (time_now - date_at_beginning).total_seconds()/60.0))
                   
             avg_cost += sample_cost
-<<<<<<< HEAD
 	date_after = datetime.now()
-=======
-        date_after = datetime.now()
->>>>>>> 648c2d23bcc82644a8ed09c11043bcc749e77adb
         print("After epoch {} average loss is {:.4f} Time {} sec.".format( epoch , avg_cost/count, (date_after - date_at_beginning).total_seconds()))
 
         
