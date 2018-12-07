@@ -4,6 +4,10 @@ This is a tool to transliterate inconsistently romanized text. It is tested on A
 
 [Read more in the corresponding blog post](http://yerevann.github.io/2016/09/09/automatic-transliteration-with-lstm/).
 
+Install required packages:
+
+    pip install -r requirements.txt
+
 Before training on the corpus we need to compute the vocabularies by the following command:
 
     python make_vocab.py --language hy-AM
